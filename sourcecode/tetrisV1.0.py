@@ -1,0 +1,199 @@
+import pygame
+import random
+
+pygame.init()
+
+SCREEN_WIDTH = 300
+SCREEN_HEIGHT = 600
+BLOCK_SIZE = 30
+GRID_WIDTH = SCREEN_WIDTH // BLOCK_SIZE
+GRID_HEIGHT = SCREEN_HEIGHT // BLOCK_SIZE
+FPS = 60
+
+BLACK = (0, 0, 0)
+WHITE = (255, 255, 255)
+COLORS = [
+    (255, 0, 0), (0, 255, 0), (0, 0, 255),
+    (255, 255, 0), (255, 0, 255), (0, 255, 255),
+    (128, 0, 128)
+]
+
+SHAPES = [
+    [[(0, 1), (1, 1), (2, 1), (3, 1)],
+     [(1, 0), (1, 1), (1, 2), (1, 3)]],
+    [[(0, 0), (0, 1), (1, 0), (1, 1)]],
+    [[(1, 0), (0, 1), (1, 1), (2, 1)],
+     [(1, 0), (1, 1), (1, 2), (2, 1)],
+     [(0, 1), (1, 1), (2, 1), (1, 2)],
+     [(1, 0), (1, 1), (1, 2), (0, 1)]],
+    [[(0, 0), (0, 1), (0, 2), (1, 2)],
+     [(0, 1), (1, 1), (2, 1), (2, 0)],
+     [(1, 0), (1, 1), (1, 2), (0, 0)],
+     [(0, 0), (0, 1), (1, 0), (2, 0)]],
+    [[(0, 2), (0, 1), (0, 0), (1, 0)],
+     [(0, 0), (1, 0), (2, 0), (2, 1)],
+     [(1, 2), (1, 1), (1, 0), (0, 2)],
+     [(2, 1), (1, 1), (0, 1), (0, 0)]],
+    [[(1, 0), (2, 0), (0, 1), (1, 1)],
+     [(0, 0), (0, 1), (1, 1), (1, 2)]],
+    [[(0, 0), (1, 0), (1, 1), (2, 1)],
+     [(1, 0), (0, 1), (1, 1), (0, 2)]]
+]
+
+class Tetris:
+    def __init__(self):
+        self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+        pygame.display.set_caption("俄罗斯方块V1.0")
+        self.clock = pygame.time.Clock()
+        self.grid = [[None] * GRID_WIDTH for _ in range(GRID_HEIGHT)]
+        self.score = 0
+        self.game_over = False
+        self.speed_levels = [0.05, 0.08, 0.1, 0.2, 0.3]
+        self.current_speed_index = 2  # 默认0.1秒
+        self.fall_speed = self.speed_levels[self.current_speed_index]
+        self.current_piece = self.new_piece()
+        self.fall_time = 0
+
+    def new_piece(self):
+        shape_index = random.randint(0, 6)
+        rotation = 0
+        color = random.choice(COLORS)
+        shape = SHAPES[shape_index][rotation]
+        x = GRID_WIDTH // 2 - 2
+        y = 0
+        return {'shape': shape, 'shape_index': shape_index,
+                'rotation': rotation, 'color': color, 'x': x, 'y': y}
+
+    def check_collision(self, shape, x, y):
+        for (dx, dy) in shape:
+            px = x + dx
+            py = y + dy
+            if px < 0 or px >= GRID_WIDTH or py >= GRID_HEIGHT:
+                return True
+            if py >= 0 and self.grid[py][px] is not None:
+                return True
+        return False
+
+    def rotate_piece(self):
+        piece = self.current_piece
+        shape_index = piece['shape_index']
+        old_rotation = piece['rotation']
+        new_rotation = (old_rotation + 1) % len(SHAPES[shape_index])
+        new_shape = SHAPES[shape_index][new_rotation]
+        if not self.check_collision(new_shape, piece['x'], piece['y']):
+            piece['rotation'] = new_rotation
+            piece['shape'] = new_shape
+
+    def lock_piece(self):
+        piece = self.current_piece
+        for (dx, dy) in piece['shape']:
+            px = piece['x'] + dx
+            py = piece['y'] + dy
+            if py >= 0:
+                self.grid[py][px] = piece['color']
+        lines_cleared = self.clear_lines()
+        self.score += lines_cleared
+        self.current_piece = self.new_piece()
+        if self.check_collision(self.current_piece['shape'],
+                               self.current_piece['x'], self.current_piece['y']):
+            self.game_over = True
+
+    def clear_lines(self):
+        lines_cleared = 0
+        for y in range(GRID_HEIGHT-1, -1, -1):
+            if all(self.grid[y]):
+                del self.grid[y]
+                self.grid.insert(0, [None]*GRID_WIDTH)
+                lines_cleared += 1
+        return lines_cleared
+
+    def draw_text(self, text, size, color, x, y):
+        font = pygame.font.Font(None, size)
+        text_surface = font.render(text, True, color)
+        text_rect = text_surface.get_rect(center=(x, y))
+        self.screen.blit(text_surface, text_rect)
+
+    def draw_grid(self):
+        for y in range(GRID_HEIGHT):
+            for x in range(GRID_WIDTH):
+                if self.grid[y][x]:
+                    pygame.draw.rect(self.screen, self.grid[y][x],
+                                    (x*BLOCK_SIZE, y*BLOCK_SIZE,
+                                     BLOCK_SIZE-1, BLOCK_SIZE-1))
+
+    def draw_piece(self, piece):
+        for (dx, dy) in piece['shape']:
+            x = (piece['x'] + dx) * BLOCK_SIZE
+            y = (piece['y'] + dy) * BLOCK_SIZE
+            pygame.draw.rect(self.screen, piece['color'],
+                            (x, y, BLOCK_SIZE-1, BLOCK_SIZE-1))
+
+    def run(self):
+        running = True
+        while running:
+            self.screen.fill(BLACK)
+            delta_time = self.clock.get_rawtime() / 1000
+            self.fall_time += delta_time
+
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    running = False
+                if event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_q:
+                        running = False
+                    if not self.game_over:
+                        if event.key == pygame.K_LEFT:
+                            self.current_piece['x'] -= 1
+                            if self.check_collision(self.current_piece['shape'],
+                                                  self.current_piece['x'],
+                                                  self.current_piece['y']):
+                                self.current_piece['x'] += 1
+                        elif event.key == pygame.K_RIGHT:
+                            self.current_piece['x'] += 1
+                            if self.check_collision(self.current_piece['shape'],
+                                                  self.current_piece['x'],
+                                                  self.current_piece['y']):
+                                self.current_piece['x'] -= 1
+                        elif event.key == pygame.K_DOWN:
+                            self.current_piece['y'] += 1
+                            if self.check_collision(self.current_piece['shape'],
+                                                  self.current_piece['x'],
+                                                  self.current_piece['y']):
+                                self.current_piece['y'] -= 1
+                                self.lock_piece()
+                        elif event.key == pygame.K_UP:
+                            self.rotate_piece()
+                        # 速度调节功能
+                        elif event.key == pygame.K_PLUS or event.key == pygame.K_KP_PLUS:    # 加速
+                            self.current_speed_index = (self.current_speed_index - 1) % 5
+                            self.fall_speed = self.speed_levels[self.current_speed_index]
+                        elif event.key == pygame.K_MINUS or event.key == pygame.K_KP_MINUS:   # 减速
+                            self.current_speed_index = (self.current_speed_index + 1) % 5
+                            self.fall_speed = self.speed_levels[self.current_speed_index]
+
+            if not self.game_over and self.fall_time >= self.fall_speed:
+                self.current_piece['y'] += 1
+                if self.check_collision(self.current_piece['shape'],
+                                      self.current_piece['x'],
+                                      self.current_piece['y']):
+                    self.current_piece['y'] -= 1
+                    self.lock_piece()
+                self.fall_time = 0
+
+            self.draw_grid()
+            if not self.game_over:
+                self.draw_piece(self.current_piece)
+            self.draw_text(f'Score: {self.score}', 30, WHITE, SCREEN_WIDTH//2, 20)
+            self.draw_text(f'Speed: {self.fall_speed}s', 30, WHITE, SCREEN_WIDTH//2, 50)
+            if self.game_over:
+                self.draw_text('Game Over!', 50, WHITE,
+                              SCREEN_WIDTH//2, SCREEN_HEIGHT//2)
+            pygame.display.flip()
+            self.clock.tick(FPS)
+
+        pygame.quit()
+
+if __name__ == "__main__":
+    game = Tetris()
+    game.run()
+
